@@ -1,5 +1,6 @@
 # Quiz Application
 
+Currently a working project to test new design patterns as well as getting familiar with FastAPI.
 
 ```mermaid
 erDiagram
