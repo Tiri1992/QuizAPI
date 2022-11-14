@@ -2,4 +2,5 @@ fastapi[all]
 SQLAlchemy
 pytest
 alembic
+psycopg2-binary
 pre-commit
