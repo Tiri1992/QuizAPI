@@ -9,7 +9,7 @@ class Quiz(Base):
     __tablename__ = "quiz"
 
     id = Column(Integer, primary_key=True)
-    question = Column(String(255), nullable=False)
+    question = Column(String(255), unique=True, nullable=False)
     answer = Column(String(255), nullable=False)
     created_by = Column(
         Integer, ForeignKey("user.id", name="FK_user_quiz", ondelete="CASCADE")

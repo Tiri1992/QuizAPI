@@ -8,9 +8,6 @@ class Settings(BaseSettings):
     api_v1: str = "/api/v1"
 
     postgres_uri: PostgresDsn
-    secret_key: str
-    algorithm: str
-    access_token_expire_minutes: int
 
     class Config:
         env_file = ".env"
