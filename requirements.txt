@@ -1,0 +1,5 @@
+fastapi[all]
+SQLAlchemy
+pytest
+alembic
+pre-commit
