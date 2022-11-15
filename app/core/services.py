@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from fastapi import HTTPException, status
+from app.core.security import validate_hash_password
 
 
 class DBAbstract(ABC):
@@ -14,38 +15,37 @@ class TransactionHandler(ABC):
         pass
 
 
-class ValidationHandler(ABC):
+class ReadHandler(ABC):
     @abstractmethod
     def apply(self):
         pass
 
 
+class ReadDecorator(ReadHandler):
+    # Implements the same interface it wraps
+    pass
+
+
 class UserDB(DBAbstract):
     def __init__(
         self,
-        transaction_handler: TransactionHandler,
-        validation_handler: ValidationHandler,
+        handler: TransactionHandler | ReadHandler,
     ) -> None:
-        self._transaction_handler = transaction_handler
-        self._validation_handler = validation_handler
+        self._handler = handler
 
     def commit(self):
-        self._validation_handler.apply()
-        return self._transaction_handler.apply()
+        return self._handler.apply()
 
 
 class QuizDB(DBAbstract):
     def __init__(
         self,
-        transaction_handler: TransactionHandler,
-        validation_handler: ValidationHandler,
+        handler: TransactionHandler | ReadHandler,
     ) -> None:
-        self._transaction_handler = transaction_handler
-        self._validation_handler = validation_handler
+        self._handler = handler
 
     def commit(self):
-        self._validation_handler.apply()
-        return self._transaction_handler.apply()
+        return self._handler.apply()
 
 
 class CreateHandler(TransactionHandler):
@@ -62,16 +62,19 @@ class CreateHandler(TransactionHandler):
         return record
 
 
-class ReadSingleHandler(TransactionHandler):
-    def __init__(self, db, model, _id) -> None:
+class ReadSingleHandler(ReadHandler):
+    def __init__(self, db, model, identifier_attr, identifier) -> None:
         self._db = db
         self._model = model
-        self._id = _id
+        self._identifier_attr = identifier_attr
+        self._identifier = identifier
 
     def apply(self):
         return (
             self._db.query(self._model)
-            .filter(self._model.id == self._id)
+            .filter(
+                getattr(self._model, self._identifier_attr) == self._identifier
+            )
             .first()
         )
 
@@ -96,32 +99,50 @@ class DeleteHandler(TransactionHandler):
         return super().apply()
 
 
-class ValidateUserExists(ValidationHandler):
-    # TODO: Finish implementation
-    def __init__(self, db, model, email) -> None:
-        self._db = db
-        self._model = model
-        self._email = email
+class ValidateExists(ReadDecorator):
+    def __init__(self, handler: ReadHandler, message: str) -> None:
+        self._handler = handler
+        self._message = message
 
     def apply(self):
-        return super().apply()
+        res = self._handler.apply()
+        if not res:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=self._message,
+            )
+        return res
 
 
-class ValidateUserNotExists(ValidationHandler):
-    # TODO: Finish implementation
-    def __init__(self, db, model, email) -> None:
-        self._db = db
-        self._model = model
-        self._email = email
+class ValidateNotExists(ReadDecorator):
+    def __init__(self, handler: ReadHandler, message: str) -> None:
+        # Takes in the same interface it wraps
+        self._handler = handler
+        self._message = message
 
     def apply(self):
-        res = (
-            self._db.query(self._model)
-            .filter(self._model.email == self._email)
-            .first()
-        )
+        res = self._handler.apply()
         if res:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"User with email {self._email} already exists.",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=self._message,
             )
+        return res
+
+
+class ValidatePassword(ReadDecorator):
+    def __init__(
+        self, handler: ReadHandler, message: str, password: str
+    ) -> None:
+        self._handler = handler
+        self._message = message
+        self._password = password
+
+    def apply(self):
+        res = self._handler.apply()
+        if not validate_hash_password(self._password, res.password, "bcrypt"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=self._message,
+            )
+        return res
